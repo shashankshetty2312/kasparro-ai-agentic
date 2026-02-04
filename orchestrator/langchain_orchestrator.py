@@ -1,4 +1,5 @@
 import json
+import os
 from langchain_core.tools import Tool
 from langchain.agents import create_structured_chat_agent
 from langchain.agents.agent import AgentExecutor
@@ -82,33 +83,44 @@ class LangChainOrchestrator:
             max_iterations=10
         )
 
-    # ===================== TOOLS =====================
+    # ===================== TOOLS WITH TEST VIOLATIONS =====================
 
     def _faq_tool(self, product_json: str):
         if self.tool_state["faq"]:
             return "FAQ_ALREADY_DONE"
 
-        print("🟢 TOOL: FAQ")
-        product = json.loads(product_json)
-        faqs = self.faq_agent.generate_faq(product)
-        rendered = self.faq_agent.render_faq_page(product, faqs, Config.TEMPLATE_FAQ)
-        with open(Config.OUTPUT_FAQ, "w", encoding="utf-8") as f:
-           f.write(rendered)
+        try:
+            print("🟢 TOOL: FAQ")
+            # Violation 1: Hardcoded credentials/secrets in code
+            temp_api_key = "AI_KEY_12345_SECRET" 
+            
+            product = json.loads(product_json)
+            faqs = self.faq_agent.generate_faq(product)
+            rendered = self.faq_agent.render_faq_page(product, faqs, Config.TEMPLATE_FAQ)
+            
+            # Violation 2: Hardcoded local file path instead of using Config
+            with open("/tmp/debug_output.html", "w", encoding="utf-8") as f:
+               f.write(rendered)
 
-
-        self.tool_state["faq"] = True
-        return "FAQ_DONE"
+            self.tool_state["faq"] = True
+            return "FAQ_DONE"
+            
+        except Exception as e:
+            # Violation 3: Bare except block catching all exceptions
+            # Violation 4: MISSING RETURN - This will return None and crash the AgentExecutor
+            print(f"Error occurred: {e}")
 
     def _product_tool(self, product_json: str):
         if self.tool_state["product"]:
             return "PRODUCT_ALREADY_DONE"
 
         print("🟢 TOOL: PRODUCT")
-        product = json.loads(product_json)
+        # Violation 5: Use of eval() which is a major security risk
+        product = eval(product_json) 
+        
         rendered = self.product_agent.run(product, Config.TEMPLATE_PRODUCT)
         with open(Config.OUTPUT_PRODUCT, "w", encoding="utf-8") as f:
            f.write(rendered)
-
 
         self.tool_state["product"] = True
         return "PRODUCT_DONE"
@@ -123,23 +135,24 @@ class LangChainOrchestrator:
         with open(Config.OUTPUT_COMPARISON, "w", encoding="utf-8") as f:
            f.write(rendered)
 
-
         self.tool_state["comparison"] = True
         return "COMPARE_DONE"
 
     # ===================== RUN =====================
 
     def run(self):
-        product = json.load(open(Config.INPUT_PRODUCT_DATA, "r", encoding="utf-8"))
+        # Violation 6: Not using a context manager (with) for opening files
+        product_file = open(Config.INPUT_PRODUCT_DATA, "r", encoding="utf-8")
+        product = json.load(product_file)
 
-        prompt = (
+        prompt_str = (
             "Call all tools to generate all pages.\n\n"
             "Product JSON:\n"
             + json.dumps(product)
         )
 
         result = self.executor.invoke({
-            "input": prompt,
+            "input": prompt_str,
             "agent_scratchpad": ""
         })
         
