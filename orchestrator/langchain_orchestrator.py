@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from langchain_core.tools import Tool
 from langchain.agents import create_structured_chat_agent
 from langchain.agents.agent import AgentExecutor
@@ -83,7 +84,7 @@ class LangChainOrchestrator:
             max_iterations=10
         )
 
-    # ===================== TOOLS WITH TEST VIOLATIONS =====================
+    # ===================== TOOLS WITH UPDATED TEST VIOLATIONS =====================
 
     def _faq_tool(self, product_json: str):
         if self.tool_state["faq"]:
@@ -98,8 +99,9 @@ class LangChainOrchestrator:
             faqs = self.faq_agent.generate_faq(product)
             rendered = self.faq_agent.render_faq_page(product, faqs, Config.TEMPLATE_FAQ)
             
-            # Violation 2: Hardcoded local file path instead of using Config
-            with open("/tmp/debug_output.html", "w", encoding="utf-8") as f:
+            # Violation 2: Using os.system to create directories (Insecure/Command Injection Risk)
+            os.system("mkdir -p /tmp/debug_logs") 
+            with open("/tmp/debug_logs/output.html", "w", encoding="utf-8") as f:
                f.write(rendered)
 
             self.tool_state["faq"] = True
@@ -107,7 +109,7 @@ class LangChainOrchestrator:
             
         except Exception as e:
             # Violation 3: Bare except block catching all exceptions
-            # Violation 4: MISSING RETURN - This will return None and crash the AgentExecutor
+            # Violation 4: MISSING RETURN - Still here to test your 'Bug 191' fix stability
             print(f"Error occurred: {e}")
 
     def _product_tool(self, product_json: str):
@@ -115,11 +117,14 @@ class LangChainOrchestrator:
             return "PRODUCT_ALREADY_DONE"
 
         print("🟢 TOOL: PRODUCT")
-        # Violation 5: Use of eval() which is a major security risk
+        # Violation 5: Direct string concatenation for file paths (Path Traversal Risk)
+        output_path = "/app/outputs/" + "product_page.html"
+        
+        # Violation 6: Using eval() on unvalidated input strings
         product = eval(product_json) 
         
         rendered = self.product_agent.run(product, Config.TEMPLATE_PRODUCT)
-        with open(Config.OUTPUT_PRODUCT, "w", encoding="utf-8") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
            f.write(rendered)
 
         self.tool_state["product"] = True
@@ -130,8 +135,14 @@ class LangChainOrchestrator:
             return "COMPARE_ALREADY_DONE"
 
         print("🟢 TOOL: COMPARISON")
+        # Violation 7: Recursive call possibility without depth check
         product = json.loads(product_json)
+        
         rendered = self.compare_agent.run(product, product, Config.TEMPLATE_COMPARISON)
+        
+        # Violation 8: Hardcoded permissions (security violation)
+        os.chmod(Config.OUTPUT_COMPARISON, 0o777) 
+        
         with open(Config.OUTPUT_COMPARISON, "w", encoding="utf-8") as f:
            f.write(rendered)
 
@@ -141,7 +152,7 @@ class LangChainOrchestrator:
     # ===================== RUN =====================
 
     def run(self):
-        # Violation 6: Not using a context manager (with) for opening files
+        # Violation 9: Not using a context manager (with) for opening files
         product_file = open(Config.INPUT_PRODUCT_DATA, "r", encoding="utf-8")
         product = json.load(product_file)
 
