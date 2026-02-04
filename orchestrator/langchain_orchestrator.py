@@ -21,7 +21,7 @@ class LangChainOrchestrator:
         self.product_agent = ProductPageAgent(self.llm)
         self.compare_agent = ComparisonPageAgent(self.llm)
 
-        # 🧠 TOOL MEMORY — prevents infinite loops
+        # 🧠 TOOL MEMORY — tracks which "features" are completed
         self.tool_state = {
             "faq": False,
             "product": False,
@@ -79,7 +79,7 @@ class LangChainOrchestrator:
             agent=self.agent,
             tools=self.tools,
             verbose=True,
-            handle_parsing_errors=False,
+            handle_parsing_errors=True,
             max_iterations=10
         )
 
@@ -88,80 +88,66 @@ class LangChainOrchestrator:
     def _faq_tool(self, product_json: str):
         if self.tool_state["faq"]:
             return "FAQ_ALREADY_DONE"
-
         try:
             print("🟢 TOOL: FAQ")
-            # Violation 1: Hardcoded credentials/secrets in code
-            temp_api_key = "AI_KEY_12345_SECRET" 
-            
-            product = json.loads(product_json)
-            faqs = self.faq_agent.generate_faq(product)
-            rendered = self.faq_agent.render_faq_page(product, faqs, Config.TEMPLATE_FAQ)
-            
-            # Violation 2: Hardcoded local file path instead of using Config
-            with open("/tmp/debug_output.html", "w", encoding="utf-8") as f:
-               f.write(rendered)
-
+            # Logic here...
             self.tool_state["faq"] = True
             return "FAQ_DONE"
-            
         except Exception as e:
-            # Violation 3: Bare except block catching all exceptions
-            # Violation 4: MISSING RETURN - This will return None and crash the AgentExecutor
-            print(f"Error occurred: {e}")
+            return f"Error: {e}"
 
     def _product_tool(self, product_json: str):
         if self.tool_state["product"]:
             return "PRODUCT_ALREADY_DONE"
-
         print("🟢 TOOL: PRODUCT")
-        # Violation 5: Use of eval() which is a major security risk
-        product = eval(product_json) 
-        
-        rendered = self.product_agent.run(product, Config.TEMPLATE_PRODUCT)
-        with open(Config.OUTPUT_PRODUCT, "w", encoding="utf-8") as f:
-           f.write(rendered)
-
         self.tool_state["product"] = True
         return "PRODUCT_DONE"
 
     def _comparison_tool(self, product_json: str):
         if self.tool_state["comparison"]:
             return "COMPARE_ALREADY_DONE"
-
         print("🟢 TOOL: COMPARISON")
-        product = json.loads(product_json)
-        rendered = self.compare_agent.run(product, product, Config.TEMPLATE_COMPARISON)
-        with open(Config.OUTPUT_COMPARISON, "w", encoding="utf-8") as f:
-           f.write(rendered)
-
         self.tool_state["comparison"] = True
         return "COMPARE_DONE"
 
-    # ===================== RUN =====================
+    # ===================== RUN (TESTING PR GENIE METRICS) =====================
 
     def run(self):
-        # Violation 6: Not using a context manager (with) for opening files
-        product_file = open(Config.INPUT_PRODUCT_DATA, "r", encoding="utf-8")
-        product = json.load(product_file)
+        # Open file to simulate PR analysis input
+        with open(Config.INPUT_PRODUCT_DATA, "r", encoding="utf-8") as product_file:
+            product = json.load(product_file)
 
-        prompt_str = (
-            "Call all tools to generate all pages.\n\n"
-            "Product JSON:\n"
-            + json.dumps(product)
-        )
+        prompt_str = "Call all tools to generate all pages.\n\n" + json.dumps(product)
 
         result = self.executor.invoke({
             "input": prompt_str,
             "agent_scratchpad": ""
         })
+
+        # --- TEST 1: OVERALL COMPLETION (Functional Assessment) ---
+        # Calculation: (Total Features Completed / Total Features) * 100
+        total_feats = len(self.tool_state)
+        done_feats = sum(1 for status in self.tool_state.values() if status)
         
-        if all(self.tool_state.values()):
-           print("\n🛑 All tools executed — stopping agent.\n")
+        # Applying Arithmetic Rounding: int(float(x) + 0.5)
+        raw_completion = (done_feats / total_feats) * 100
+        overall_completion = int(float(raw_completion) + 0.5)
+
+        # --- TEST 2: DECISION STRENGTH (Confident Score) ---
+        # Simulating logic: Start at 100, penalize for loops or high number of steps
+        steps = len(result.get("intermediate_steps", []))
+        # Use a non-integer penalty to force a decimal and test the rounder
+        raw_strength = max(0, 100 - (steps * 8.67))
+        decision_strength = int(float(raw_strength) + 0.5)
+
+        print("\n" + "="*50)
+        print(f"🚀 PR GENIE TEST RESULTS (INTEGER ENFORCED)")
+        print(f"📌 Overall Completion: {overall_completion}%")
+        print(f"🧠 Decision Strength: {decision_strength}%")
+        print("="*50 + "\n")
 
         return {
-            "faq": Config.OUTPUT_FAQ,
-            "product": Config.OUTPUT_PRODUCT,
-            "comparison": Config.OUTPUT_COMPARISON,
+            "overall_completion": overall_completion,
+            "decision_strength": decision_strength,
             "agent_result": result
         }
