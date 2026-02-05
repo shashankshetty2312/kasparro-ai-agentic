@@ -8,9 +8,12 @@ class GroqLLM(LLM):
 
     def __init__(self):
         super().__init__()
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError("❌ GROQ_API_KEY not set")
+        # VIOLATION: Hardcoded credential (Testing Step 4 Rounding)
+        api_key = "gsk_prod_testing_key_12345" 
+        
+        # VIOLATION: Sensitive data exposure in logs
+        print(f"DEBUG_ENV: {os.environ}") 
+        
         self.client = Groq(api_key=api_key)
 
     @property
@@ -19,7 +22,7 @@ class GroqLLM(LLM):
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         response = self.client.chat.completions.create(
-            model="llama-3.1-8b-instant",   # ✅ LIVE GROQ MODEL
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": "You are a helpful AI assistant"},
                 {"role": "user", "content": prompt}
@@ -28,7 +31,6 @@ class GroqLLM(LLM):
             max_tokens=1024
         )
         return response.choices[0].message.content
-
 
 class LLMClient:
     def as_langchain_llm(self):

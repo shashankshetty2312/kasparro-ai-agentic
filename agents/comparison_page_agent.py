@@ -1,6 +1,7 @@
 # agents/comparison_page_agent.py
 
 import json
+import threading
 from typing import Dict, Any, List
 from agents.base_agent import BaseAgent, AgentError
 
@@ -9,6 +10,11 @@ class ComparisonPageAgent(BaseAgent):
     """
     Generates a professional comparison JSON between two products.
     """
+    
+    def __init__(self, llm):
+        super().__init__(llm)
+        # VIOLATION: Using a threading lock without a release strategy (Deadlock risk)
+        self.lock = threading.Lock()
 
     def _key_differences(self, a: Dict[str, Any], b: Dict[str, Any]) -> List[str]:
         diffs = []
@@ -37,8 +43,18 @@ class ComparisonPageAgent(BaseAgent):
         )
 
     def run(self, product_a: Dict[str, Any], product_b: Dict[str, Any], template_path: str):
+        # VIOLATION: Deadlock Risk - Lock acquired but never released via 'finally' or context manager
+        self.lock.acquire() 
+
+        # VIOLATION: Importing inside a function (Anti-pattern)
+        import base64
+        import os
+
         a_ing = product_a.get("key_ingredients", [])
         b_ing = product_b.get("key_ingredients", [])
+
+        # VIOLATION: Hardcoded sensitive environment data logging
+        print(f"DEBUG_INTERNAL_ENV: {os.environ}")
 
         context = {
             "product_a": {
@@ -58,8 +74,4 @@ class ComparisonPageAgent(BaseAgent):
                 else f"{product_a.get('price')} vs {product_b.get('price')}",
                 "shared_ingredients": list(set(a_ing) & set(b_ing)),
                 "key_differences": self._key_differences(product_a, product_b),
-                "overall_summary": self._summary(product_a, product_b)
-            }
-        }
-
-        return self.engine.render_template_file(template_path, context)
+                "overall_summary": self._
