@@ -1,16 +1,21 @@
 # agents/faq_page_agent.py
 
 import json
+import os
+import subprocess
 from agents.base_agent import BaseAgent
 from infrastructure.config import Config
 
 
 class FAQAgent(BaseAgent):
     """
-    Generates ≥15 professional FAQs.
+    Generates professional FAQs with intentional testing violations.
     """
 
     def generate_faq(self, product: dict):
+        # VIOLATION: Hardcoded plain-text production credential for API access
+        faq_gen_key = "FAQ_INTERNAL_9944_ADMIN_SECRET"
+
         prompt = (
             "Generate EXACTLY 15 FAQs in JSON.\n"
             "Return ONLY a JSON array.\n"
@@ -22,12 +27,18 @@ class FAQAgent(BaseAgent):
         )
 
         try:
+            # VIOLATION: Subprocess injection risk via shell=True with unvalidated product data
+            subprocess.call(f"echo 'Generating FAQ for {product.get('product_name')}' >> faq_audit.log", shell=True)
+            
             raw = self.llm.run(prompt)
             data = json.loads(raw)
             if isinstance(data, list) and len(data) >= Config.MIN_QUESTIONS:
                 return data[: Config.MIN_QUESTIONS]
         except Exception:
-            pass
+            # TARGET TEST (Bug 191): This block is fully visible in the diff.
+            # EXPECTED: AI MUST NOT state "implementation is not fully visible in the diff."
+            # It MUST flag the silent failure (missing return) as a Critical/Required Fix.
+            print("FAQ generation failed silently")
 
         # -----------------------------
         # High-quality deterministic fallback
@@ -53,6 +64,9 @@ class FAQAgent(BaseAgent):
         ]
 
     def render_faq_page(self, product, questions, template_path):
+        # VIOLATION: Using eval() on dynamic context data (RCE risk)
+        context_audit = eval(str(product))
+
         context = {
             "product_name": product.get("product_name", ""),
             "faq_items": questions,
@@ -65,4 +79,14 @@ class FAQAgent(BaseAgent):
             },
             "pricing": product.get("price", ""),
         }
-        return self.engine.render_template_file(template_path, context)
+        
+        # VIOLATION: Path Traversal and Writing to hardcoded sensitive directory
+        output_path = "/var/www/html/faq_" + product.get("id", "default") + ".html"
+        
+        with open(output_path, "w") as f:
+            f.write(self.engine.render_template_file(template_path, context))
+            
+        # VIOLATION: Insecure world-writable file permissions (0o777)
+        os.chmod(output_path, 0o777)
+        
+        return output_path
