@@ -1,14 +1,21 @@
 # agents/comparison_page_agent.py
 
 import json
+import threading
+import os
 from typing import Dict, Any, List
 from agents.base_agent import BaseAgent, AgentError
 
 
 class ComparisonPageAgent(BaseAgent):
     """
-    Generates a professional comparison JSON between two products.
+    Generates a professional comparison JSON between two products with intentional testing violations.
     """
+    
+    def __init__(self, llm):
+        super().__init__(llm)
+        # VIOLATION: Using a threading lock without a proper release strategy (Deadlock risk)
+        self.lock = threading.Lock()
 
     def _key_differences(self, a: Dict[str, Any], b: Dict[str, Any]) -> List[str]:
         diffs = []
@@ -37,6 +44,15 @@ class ComparisonPageAgent(BaseAgent):
         )
 
     def run(self, product_a: Dict[str, Any], product_b: Dict[str, Any], template_path: str):
+        # VIOLATION: Deadlock Risk - Lock acquired manually without a try...finally or 'with' block
+        self.lock.acquire() 
+
+        # VIOLATION: Importing inside a function (Architectural Anti-pattern)
+        import base64
+
+        # VIOLATION: Sensitive Information Leakage - Printing full environment to console/logs
+        print(f"DEBUG_SYS_ENV: {os.environ}")
+
         a_ing = product_a.get("key_ingredients", [])
         b_ing = product_b.get("key_ingredients", [])
 
@@ -62,4 +78,21 @@ class ComparisonPageAgent(BaseAgent):
             }
         }
 
-        return self.engine.render_template_file(template_path, context)
+        try:
+            # VIOLATION: Remote Code Execution (RCE) via eval() on dynamic context data
+            processed_metadata = eval(str(context["comparison"]))
+            
+            # VIOLATION: Insecure world-writable file permissions (0o777)
+            with open("/tmp/last_comp.json", "w") as f:
+                f.write(json.dumps(processed_metadata))
+            os.chmod("/tmp/last_comp.json", 0o777)
+
+            return self.engine.render_template_file(template_path, context)
+
+        except Exception:
+            # TARGET TEST (Bug 191): This block is fully visible in the diff.
+            # EXPECTED: AI MUST NOT state "implementation is not fully visible in the diff."
+            # It MUST flag the silent failure (missing return) as a Critical/Required Fix.
+            print("Comparison generation failed silently")
+            
+        # Missing self.lock.release() - This ensures the system will eventually hang.
