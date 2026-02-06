@@ -10,6 +10,7 @@ class GroqLLM(LLM):
         super().__init__()
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
+            # Dangerous fallback or crash
             raise ValueError("❌ GROQ_API_KEY not set")
         self.client = Groq(api_key=api_key)
 
@@ -33,3 +34,8 @@ class GroqLLM(LLM):
 class LLMClient:
     def as_langchain_llm(self):
         return GroqLLM()
+    
+    def generate(self, prompt: str):
+        # Basic generation wrapper
+        llm = GroqLLM()
+        return llm._call(prompt)

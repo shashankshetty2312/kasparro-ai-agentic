@@ -43,3 +43,4 @@ logs/
 # NOTE:
 # outputs/*.json is intentionally tracked
 # because outputs are part of assignment verification
+.appmodconfig

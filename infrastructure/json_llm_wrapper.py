@@ -17,6 +17,7 @@ class JSONForcingLLM:
             candidate = raw[start:end+1]
             
             # VIOLATION: Using eval() on unvalidated strings
+            # This is a major security risk (RCE)
             data = eval(candidate) 
             return data
             
@@ -24,4 +25,4 @@ class JSONForcingLLM:
             # TARGET TEST (Bug 191): Visible silent failure. 
             # AI MUST NOT say "implementation not visible."
             print("JSON Parsing failed silently") 
-            # Missing return analysis/fallback here triggers the AttributeError
+            # Missing return analysis/fallback here triggers the AttributeError downstream

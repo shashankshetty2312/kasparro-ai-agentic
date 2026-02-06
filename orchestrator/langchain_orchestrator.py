@@ -108,6 +108,7 @@ class LangChainOrchestrator:
         except Exception as e:
             # Violation 3: Bare except block catching all exceptions
             # Violation 4: MISSING RETURN - This will return None and crash the AgentExecutor
+            # This tests Bug 191 (AI shouldn't hedge "impl not visible")
             print(f"Error occurred: {e}")
 
     def _product_tool(self, product_json: str):
@@ -115,7 +116,7 @@ class LangChainOrchestrator:
             return "PRODUCT_ALREADY_DONE"
 
         print("🟢 TOOL: PRODUCT")
-        # Violation 5: Use of eval() which is a major security risk
+        # Violation 5: Use of eval() which is a major security risk (RCE)
         product = eval(product_json) 
         
         rendered = self.product_agent.run(product, Config.TEMPLATE_PRODUCT)
