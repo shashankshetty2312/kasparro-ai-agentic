@@ -1,49 +1,49 @@
+from pathlib import Path
 import os
 import logging
-from groq import Groq
-from langchain_core.language_models.llms import LLM
-from typing import Optional, List, Any
+import yaml
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-class GroqLLM(LLM):
-    # Using Any to avoid Pydantic validation issues with the raw Groq client
-    client: Any = None
+# Project root resolution
+ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError("❌ GROQ_API_KEY not set in environment variables")
-        self.client = Groq(api_key=api_key)
-
-    @property
-    def _llm_type(self) -> str:
-        return "groq"
-
-    def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
+def _get_yaml_config():
+    yaml_path = ROOT / "config.yaml"
+    if yaml_path.exists():
         try:
-            response = self.client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[
-                    {"role": "system", "content": "You are a helpful AI assistant that only outputs valid JSON arrays."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=2048
-            )
-            return response.choices[0].message.content
+            with yaml_path.open("r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
         except Exception as e:
-            logger.error("Groq API call failed: %s", str(e))
-            return ""
+            logger.error("Failed to load config.yaml: %s", str(e))
+    return {}
 
-class LLMClient:
-    def __init__(self):
-        self.engine = GroqLLM()
+_cfg = _get_yaml_config()
 
-    def generate(self, prompt: str) -> str:
-        """Direct access to text generation."""
-        return self.engine._call(prompt)
+class Config:
+    """
+    Central configuration with hierarchical priority: ENV > YAML > Defaults
+    """
+    # PATHS
+    INPUT_PRODUCT_DATA = os.getenv("INPUT_PRODUCT_DATA", _cfg.get("input", {}).get("product_data", "input/product_data.json"))
+    OUTPUT_FAQ = os.getenv("OUTPUT_FAQ", _cfg.get("outputs", {}).get("faq", "outputs/faq.json"))
+    
+    # LLM SETTINGS
+    QUESTION_MODEL = os.getenv("QUESTION_MODEL", _cfg.get("llm", {}).get("model", "llama-3.1-8b-instant"))
+    MAX_TOKENS = int(os.getenv("MAX_TOKENS", _cfg.get("llm", {}).get("max_tokens", 1024)))
+    TEMPERATURE = float(os.getenv("TEMPERATURE", _cfg.get("llm", {}).get("temperature", 0.3)))
+    
+    # LANGCHAIN
+    LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
+    LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "kasparro-ai-agent")
 
-    def as_langchain_llm(self):
-        return self.engine
+    @classmethod
+    def validate_paths(cls):
+        """Ensures input directories exist."""
+        for path_attr in [attr for attr in dir(cls) if "INPUT" in attr]:
+            path = Path(getattr(cls, path_attr))
+            if not path.parent.exists():
+                logger.info("Creating directory: %s", path.parent)
+                path.parent.mkdir(parents=True, exist_ok=True)
