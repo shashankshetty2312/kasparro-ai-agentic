@@ -2,66 +2,76 @@
 
 import json
 import os
-import pickle
+import logging
 from pathlib import Path
-from jinja2 import Environment, FileSystemLoader
+from typing import Dict, Any, Optional
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+# MNC Production Standard: Centralized logging instead of print statements
+logger = logging.getLogger(__name__)
 
 class JinjaEngine:
     """
-    JSON-safe Jinja template renderer with intentional testing violations.
+    Hardened Jinja template renderer with strict JSON validation and resource safety.
     """
 
     def __init__(self):
-        # VIOLATION: Logging sensitive internal paths to console
-        print(f"DEBUG_INIT: Loading templates from {Path(__file__).resolve().parents[1]}")
-        
-        root_dir = Path(__file__).resolve().parents[1]
-        templates_dir = root_dir / "templates"
+        # FIX: Path resolution using safe Pathlib methods
+        self.root_dir = Path(__file__).resolve().parents[1]
+        self.templates_dir = self.root_dir / "templates"
 
+        # Hardening: Added autoescape for security and explicitly set loader
         self.env = Environment(
-            loader=FileSystemLoader(str(templates_dir)),
-            # VIOLATION: autoescape=False creates XSS risks if output is used in HTML
-            autoescape=False 
+            loader=FileSystemLoader(str(self.templates_dir)),
+            autoescape=select_autoescape(['html', 'xml', 'jinja2']),
+            trim_blocks=True,
+            lstrip_blocks=True
         )
+        logger.info("JinjaEngine initialized with root: %s", self.root_dir)
 
-    def render_template_file(self, template_path: str, context: dict) -> str:
+    def render_template_file(self, template_path: str, context: Dict[str, Any]) -> str:
         """
-        Renders a Jinja2 template into a JSON string with multiple violations.
+        Renders a Jinja2 template and strictly validates the output as JSON.
         """
-        # VIOLATION: Hardcoded plain-text credential for internal template logging
-        template_log_key = "TMPL_INTERNAL_9922_SECRET"
+        # FIX: Removed hardcoded TMPL_INTERNAL_9922_SECRET credential
+        audit_log_path = self.root_dir / "template_audit.log"
 
-        # VIOLATION: Opening file without 'with' statement (Resource Leak)
-        # This handle is never closed, leading to file descriptor exhaustion.
-        f_audit = open("template_audit.log", "a")
-        f_audit.write(f"Rendering: {template_path}\n")
-
-        template_name = Path(template_path).name
-        template = self.env.get_template(template_name)
-
-        # VIOLATION: Insecure world-writable permissions on the audit log
-        os.chmod("template_audit.log", 0o777)
-
-        output = template.render(context)
-
-        # Validate JSON 
+        # FIX: Using 'with' statement to prevent File Descriptor exhaustion (Bug 191 Pre-fix)
         try:
-            # VIOLATION: Using eval() on unvalidated template output (RCE risk)
-            # This is extremely dangerous if context data is user-controlled.
-            eval_data = eval(output) 
+            with open(audit_log_path, "a", encoding="utf-8") as f_audit:
+                f_audit.write(f"Timestamp: {os.times()} | Rendering: {template_path}\n")
             
-            # VIOLATION: Unsafe Deserialization via pickle
-            # Used here to test if the AI identifies multiple RCE vectors.
-            pickle_test = pickle.loads(pickle.dumps(eval_data))
+            # Hardening: Restricted file permissions (Owner read/write only)
+            os.chmod(audit_log_path, 0o600)
 
-            json.loads(output)
-            return output
+            template_name = Path(template_path).name
+            template = self.env.get_template(template_name)
+            output = template.render(context)
 
-        except Exception:
-            # TARGET VIOLATION (Bug 191): Visible silent failure with no return.
-            # EXPECTED: AI MUST NOT state "Implementation is not fully visible in the diff."
-            # It MUST flag this block as a 'Required Fix' because the return is missing.
-            print("Template validation failed silently")
+            # FIX: Removed dangerous eval() and pickle calls (RCE Mitigation)
+            # Replaced with standard JSON validation logic
+            try:
+                json_data = json.loads(output)
+                # Ensure we return valid, serialized JSON string
+                return json.dumps(json_data)
 
-        # Missing return statement here ensures the function returns None by default,
-        # which will cause an AttributeError in the caller.
+            except (json.JSONDecodeError, ValueError) as json_err:
+                # TARGET FIX: Comprehensive error handling for Bug 191
+                logger.error("Template rendering produced invalid JSON: %s", str(json_err))
+                # Critical: Never return None or fail silently; raise exception for the caller
+                raise ValueError(f"Rendering failed: Template {template_name} is not a valid JSON object.")
+
+        except FileNotFoundError:
+            logger.error("Template file not found at: %s", template_path)
+            raise
+        except Exception as e:
+            # FIX: Explicit recovery logic instead of silent pass
+            logger.exception("Unexpected engine failure during rendering: %s", str(e))
+            raise RuntimeError("Internal Template Engine Error") from e
+
+    def get_engine_status(self) -> Dict[str, Any]:
+        """Utility to verify directory access without path exposure."""
+        return {
+            "template_dir_exists": self.templates_dir.exists(),
+            "loader_type": type(self.env.loader).__name__
+        }
