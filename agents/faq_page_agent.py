@@ -1,16 +1,25 @@
 # agents/faq_page_agent.py
 
 import json
+import logging
 from agents.base_agent import BaseAgent
 from infrastructure.config import Config
+from agents.base_agent import AgentError
+
+
+logger = logging.getLogger(__name__)
 
 
 class FAQAgent(BaseAgent):
     """
-    Generates ≥15 professional FAQs.
+    Generates ≥ MIN_QUESTIONS professional FAQs.
     """
 
     def generate_faq(self, product: dict):
+
+        if not self.llm:
+            raise AgentError("LLM is not configured")
+
         prompt = (
             "Generate EXACTLY 15 FAQs in JSON.\n"
             "Return ONLY a JSON array.\n"
@@ -24,14 +33,29 @@ class FAQAgent(BaseAgent):
         try:
             raw = self.llm.run(prompt)
             data = json.loads(raw)
-            if isinstance(data, list) and len(data) >= Config.MIN_QUESTIONS:
-                return data[: Config.MIN_QUESTIONS]
-        except Exception:
-            pass
 
-        # -----------------------------
-        # High-quality deterministic fallback
-        # -----------------------------
+            if not isinstance(data, list):
+                raise AgentError("Invalid LLM response format")
+
+            validated = [
+                q for q in data
+                if isinstance(q, dict)
+                and "category" in q
+                and "question" in q
+            ]
+
+            if len(validated) >= Config.MIN_QUESTIONS:
+                return validated[: Config.MIN_QUESTIONS]
+
+        except Exception as e:
+            logger.warning(f"FAQ generation failed: {str(e)}")
+
+        return self._deterministic_fallback(product)
+
+    # ---------------------------------------------------
+    # Deterministic fallback
+    # ---------------------------------------------------
+    def _deterministic_fallback(self, product: dict):
         name = product.get("product_name", "this product")
 
         return [
@@ -53,6 +77,7 @@ class FAQAgent(BaseAgent):
         ]
 
     def render_faq_page(self, product, questions, template_path):
+
         context = {
             "product_name": product.get("product_name", ""),
             "faq_items": questions,
@@ -65,4 +90,5 @@ class FAQAgent(BaseAgent):
             },
             "pricing": product.get("price", ""),
         }
+
         return self.engine.render_template_file(template_path, context)
