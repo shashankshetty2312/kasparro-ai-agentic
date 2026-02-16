@@ -2,20 +2,29 @@
 
 from typing import Dict, Any
 from agents.base_agent import BaseAgent, AgentError
-from template_engine.jinja_engine import JinjaEngine
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProductPageAgent(BaseAgent):
     """
-    Renders a clean product page JSON using Jinja.
+    Renders a clean product page using Jinja templates.
+    Ensures validated context before rendering.
     """
-
-    def __init__(self, llm=None):
-        super().__init__(llm)
-        self.engine = JinjaEngine()
 
     def run(self, product: Dict[str, Any], template_path: str) -> str:
         try:
+            if not isinstance(product, dict):
+                raise AgentError("Product must be a dictionary")
+
+            if not template_path:
+                raise AgentError("Template path is required")
+
+            if not product.get("product_name"):
+                raise AgentError("Product name is required")
+
             context = {
                 "product_name": product.get("product_name", ""),
                 "benefits": product.get("benefits", []),
@@ -28,7 +37,15 @@ class ProductPageAgent(BaseAgent):
                 "pricing": product.get("price", "")
             }
 
-            return self.engine.render_template_file(template_path, context)
+            rendered = self.engine.render_template_file(template_path, context)
 
+            if not rendered:
+                raise AgentError("Template rendering returned empty output")
+
+            return rendered
+
+        except AgentError:
+            raise
         except Exception as e:
-            raise AgentError(f"ProductPageAgent error: {e}")
+            logger.exception("Unexpected ProductPageAgent failure")
+            raise AgentError(f"ProductPageAgent error: {str(e)}")
