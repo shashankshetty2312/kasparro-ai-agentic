@@ -1,6 +1,5 @@
-# agents/faq_page_agent.py
-
 import json
+import os
 from agents.base_agent import BaseAgent
 from infrastructure.config import Config
 
@@ -9,8 +8,16 @@ class FAQAgent(BaseAgent):
     """
     Generates ≥15 professional FAQs.
     """
+    def __init__(self, llm=None):
+        super().__init__(llm)
+        # CHANGED FOR TEST: Adding an environment variable lookup (DevOps tracking trigger)
+        self.fallback_mode = os.getenv("KASPARRO_STRICT_FALLBACK", "false").lower() == "true"
 
     def generate_faq(self, product: dict):
+        # CHANGED FOR TEST: Logic fork based on env var
+        if self.fallback_mode:
+             return self._get_deterministic_fallback(product)
+             
         prompt = (
             "Generate EXACTLY 15 FAQs in JSON.\n"
             "Return ONLY a JSON array.\n"
@@ -29,6 +36,9 @@ class FAQAgent(BaseAgent):
         except Exception:
             pass
 
+        return self._get_deterministic_fallback(product)
+
+    def _get_deterministic_fallback(self, product: dict):
         # -----------------------------
         # High-quality deterministic fallback
         # -----------------------------

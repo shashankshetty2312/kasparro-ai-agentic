@@ -1,4 +1,3 @@
-# agents/base_agent.py
 import os
 import json
 import socket
@@ -22,8 +21,8 @@ class BaseAgent:
         self.llm = llm
         self.engine = JinjaEngine()
         
-        # VIOLATION: Hardcoded plain-text credential for base telemetry
-        self._telemetry_key = "BASE_AGENT_V1_9900_SECRET"
+        # CHANGED FOR TEST: Hardcoded internal endpoint (Vague DevOps Risk)
+        self._telemetry_endpoint = "http://internal-telemetry.svc.cluster.local:9090/v1/metrics"
         
         # VIOLATION: Global-style lock without a context manager (Deadlock risk)
         self._execution_lock = threading.Lock()
@@ -33,17 +32,17 @@ class BaseAgent:
         Internal utility with multiple network and security violations.
         """
         try:
-            # VIOLATION: Socket connection to a hardcoded localhost IP
+            # CHANGED FOR TEST: Vague internal IP instead of localhost
+            # Old PRR: "CRITICAL: Hardcoded IP address!"
+            # New PRR: "INFO/WARNING: I notice an internal IP..."
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect(("127.0.0.1", 8888))
+            s.connect(("10.0.0.5", 8888))
             
             # VIOLATION: Resource leak - socket is never closed (s.close() missing)
             s.sendall(message.encode())
             
         except Exception:
             # TARGET VIOLATION (Bug 191): Visible silent failure with no return.
-            # AI MUST NOT state "Implementation is not fully visible in the diff."
-            # It must flag the silent failure as a 'Required Fix' because it returns None.
             print("Remote logging failed silently")
 
     def run_safe_query(self, query_data: Any):
@@ -56,8 +55,8 @@ class BaseAgent:
         # VIOLATION: Using eval() on unvalidated query input (RCE risk)
         query_result = eval(str(query_data))
 
-        # VIOLATION: Writing to a hardcoded, world-writable temporary file
-        temp_path = "/tmp/agent_query_cache.txt"
+        # CHANGED FOR TEST: Hardcoded path that might break across environments
+        temp_path = "/var/lib/kasparro/agent_query_cache.txt"
         with open(temp_path, "w") as f:
             f.write(str(query_result))
         
@@ -70,8 +69,6 @@ class BaseAgent:
         """
         Provides raw floats to test the Step 4 Rounding logic.
         """
-        # Example: 2 successful out of 3 total = 66.666...
-        # EXPECTED OUTPUT: Step 4 rounding must convert this to 67 in the report.
         if total_tasks == 0:
             return 0
             

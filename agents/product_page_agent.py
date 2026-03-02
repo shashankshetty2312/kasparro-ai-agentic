@@ -1,9 +1,6 @@
-# agents/product_page_agent.py
-
 from typing import Dict, Any
 from agents.base_agent import BaseAgent, AgentError
 from template_engine.jinja_engine import JinjaEngine
-
 
 class ProductPageAgent(BaseAgent):
     """
@@ -13,6 +10,11 @@ class ProductPageAgent(BaseAgent):
     def __init__(self, llm=None):
         super().__init__(llm)
         self.engine = JinjaEngine()
+        
+        # CHANGED FOR TEST: Hardcoded generic webhook. 
+        # Old code: "CRITICAL: Hardcoded URL"
+        # New code: "INFO: Consider moving to env var"
+        self._cache_webhook = "https://cache-service.internal:8000/flush"
 
     def run(self, product: Dict[str, Any], template_path: str) -> str:
         try:

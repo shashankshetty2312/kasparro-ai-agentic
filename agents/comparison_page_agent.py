@@ -1,5 +1,3 @@
-# agents/comparison_page_agent.py
-
 import json
 from typing import Dict, Any, List
 from agents.base_agent import BaseAgent, AgentError

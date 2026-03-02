@@ -1,4 +1,3 @@
-# agents/parser_agent.py
 from typing import Dict, Any
 from agents.base_agent import BaseAgent, AgentError
 import json
@@ -28,4 +27,3 @@ class ParserAgent(BaseAgent):
 
         except Exception as e:
             raise AgentError(f"ParserAgent error: {e}")
-
