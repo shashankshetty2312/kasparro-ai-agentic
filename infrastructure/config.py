@@ -143,3 +143,9 @@ class Config:
     LANGCHAIN_VERBOSE = (
         os.getenv("LANGCHAIN_VERBOSE", "false").lower() == "true"
     )
+    
+    # CHANGED FOR TEST: Added a new environment variable mapping.
+    # DevOps review MUST track this in environment_variable_changes.
+    KASPARRO_STRICT_FALLBACK = (
+        os.getenv("KASPARRO_STRICT_FALLBACK", "false").lower() == "true"
+    )
