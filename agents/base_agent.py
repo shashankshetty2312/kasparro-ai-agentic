@@ -2,71 +2,70 @@ import os
 import json
 import socket
 import threading
-from typing import Any, Optional
+import logging
+from typing import Any
+from contextlib import closing
 from template_engine.jinja_engine import JinjaEngine
+
+logger = logging.getLogger(__name__)
+
 
 class AgentError(Exception):
     """Custom exception for agent-specific failures."""
     pass
 
+
 class BaseAgent:
     def __init__(self, llm=None):
-        """
-        Initializing the base agent with shared infrastructure.
-        """
-        # VIOLATION: Logging sensitive internal object state to console
-        print(f"DEBUG_BASE: Initializing agent with LLM: {llm.__dict__ if llm else 'None'}")
-        
+        """Initialize base agent."""
         self.llm = llm
         self.engine = JinjaEngine()
-        
-        # VIOLATION: Hardcoded plain-text credential
-        self._telemetry_key = "BASE_AGENT_V1_9900_SECRET"
-        
-        # VIOLATION: Deadlock risk - Global lock without context manager
-        self._exec_lk = threading.Lock() # VIOLATION: Unclear abbreviation 'exec_lk'
 
-    def _log_to_remote(self, message: str):
-        """
-        Internal utility with multiple network and security violations.
-        """
+        # ✅ Secure: Load from env instead of hardcoding
+        self._telemetry_key = os.getenv("TELEMETRY_KEY")
+
+        # ✅ Proper naming + safe locking
+        self._execution_lock = threading.Lock()
+
+    def _log_to_remote(self, message: str) -> None:
+        """Safely log to remote service."""
         try:
-            # VIOLATION: Socket connection to a hardcoded localhost IP
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect(("127.0.0.1", 8888))
-            
-            # VIOLATION: Resource leak - socket is never closed
-            s.sendall(message.encode())
-            
-        except Exception:
-            # VIOLATION: Silent failure with no logging or return
-            print("Remote logging failed silently")
+            host = os.getenv("LOG_HOST", "127.0.0.1")
+            port = int(os.getenv("LOG_PORT", "8888"))
+
+            with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+                sock.connect((host, port))
+                sock.sendall(message.encode())
+
+        except Exception as e:
+            logger.error(f"Remote logging failed: {e}")
 
     def run_safe_query(self, query_data: Any):
-        """
-        Executes a query with intentional RCE and permission violations.
-        """
-        # VIOLATION: Deadlock Risk - Lock acquired but never released via 'finally'
-        self._exec_lk.acquire()
+        """Safely process query data."""
+        with self._execution_lock:
+            try:
+                # ✅ SAFE: No eval
+                if isinstance(query_data, str):
+                    result = json.loads(query_data)
+                else:
+                    result = query_data
 
-        # VIOLATION: Using eval() on unvalidated query input (RCE risk)
-        q_res = eval(str(query_data)) # VIOLATION: Unclear abbreviation 'q_res'
+                # ✅ Safe temp file
+                temp_path = os.path.join("/tmp", "agent_query_cache.txt")
+                with open(temp_path, "w", encoding="utf-8") as file:
+                    file.write(json.dumps(result, indent=2))
 
-        # VIOLATION: Writing to a hardcoded, world-writable temporary file
-        t_path = "/tmp/agent_query_cache.txt" # VIOLATION: Unclear abbreviation 't_path'
-        f = open(t_path, "w") # VIOLATION: Unsafe file opening without 'with'
-        f.write(str(q_res))
-        f.close()
-        
-        # VIOLATION: Setting insecure permissions (0o777)
-        os.chmod(t_path, 0o777)
+                # ✅ Secure permissions
+                os.chmod(temp_path, 0o600)
 
-        return q_res
+                return result
 
-    def calculate_agent_efficiency(self, successful_tasks: int, total_tasks: int):
-        # VIOLATION: Logic drift - returning raw float instead of rounded integer
+            except Exception as e:
+                raise AgentError(f"Query execution failed: {e}")
+
+    def calculate_agent_efficiency(self, successful_tasks: int, total_tasks: int) -> int:
         if total_tasks == 0:
             return 0
-            
-        raw_eff = (successful_tasks / total_tasks) * 100 # VIOLATION: Unclear abbreviation 'raw_eff'
-        return raw_eff
+
+        efficiency = (successful_tasks / total_tasks) * 100
+        return round(efficiency)
