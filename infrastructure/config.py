@@ -2,6 +2,9 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import yaml
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Project root
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,137 +12,118 @@ ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT / ".env"
 YAML_PATH = ROOT / "config.yaml"
 
-# Load .env if exists
+# Load .env safely
 if ENV_PATH.exists():
     load_dotenv(ENV_PATH)
+    logger.info(".env loaded successfully")
 
-# Load YAML if exists
+# Load YAML safely
+_cfg = {}
 try:
     if YAML_PATH.exists():
         with YAML_PATH.open("r", encoding="utf-8") as f:
             _cfg = yaml.safe_load(f) or {}
-    else:
-        _cfg = {}
-except Exception:
-    _cfg = {}
+        logger.info("config.yaml loaded successfully")
+except Exception as e:
+    logger.warning(f"Failed to load YAML config: {e}")
+
 
 class Config:
     """
     Central configuration with priority:
-    1. .env
+    1. Environment variables (.env)
     2. config.yaml
-    3. defaults
+    3. Defaults
     """
+
+    @staticmethod
+    def _get(key: str, default=None, section: str = None):
+        """
+        Helper method to fetch config with priority.
+        """
+        env_val = os.getenv(key)
+        if env_val is not None:
+            return env_val
+
+        if section and section in _cfg:
+            return _cfg.get(section, {}).get(key.lower(), default)
+
+        return default
 
     # ============================
     # PATHS
     # ============================
 
-    INPUT_PRODUCT_DATA = (
-        os.getenv("INPUT_PRODUCT_DATA")
-        or _cfg.get("input", {}).get("product_data")
-        or "input/product_data.json"
+    INPUT_PRODUCT_DATA = _get.__func__(
+        "INPUT_PRODUCT_DATA", "input/product_data.json", "input"
     )
 
-    TEMPLATE_FAQ = (
-        os.getenv("TEMPLATE_FAQ")
-        or _cfg.get("templates", {}).get("faq")
-        or "templates/faq_template.json"
+    TEMPLATE_FAQ = _get.__func__(
+        "TEMPLATE_FAQ", "templates/faq_template.json", "templates"
     )
 
-    TEMPLATE_PRODUCT = (
-        os.getenv("TEMPLATE_PRODUCT")
-        or _cfg.get("templates", {}).get("product_page")
-        or "templates/product_page_template.json"
+    TEMPLATE_PRODUCT = _get.__func__(
+        "TEMPLATE_PRODUCT", "templates/product_page_template.json", "templates"
     )
 
-    TEMPLATE_COMPARISON = (
-        os.getenv("TEMPLATE_COMPARISON")
-        or _cfg.get("templates", {}).get("comparison")
-        or "templates/comparison_page_template.json"
+    TEMPLATE_COMPARISON = _get.__func__(
+        "TEMPLATE_COMPARISON", "templates/comparison_page_template.json", "templates"
     )
 
-    OUTPUT_FAQ = (
-        os.getenv("OUTPUT_FAQ")
-        or _cfg.get("outputs", {}).get("faq")
-        or "outputs/faq.json"
+    OUTPUT_FAQ = _get.__func__(
+        "OUTPUT_FAQ", "outputs/faq.json", "outputs"
     )
 
-    OUTPUT_PRODUCT = (
-        os.getenv("OUTPUT_PRODUCT")
-        or _cfg.get("outputs", {}).get("product_page")
-        or "outputs/product_page.json"
+    OUTPUT_PRODUCT = _get.__func__(
+        "OUTPUT_PRODUCT", "outputs/product_page.json", "outputs"
     )
 
-    OUTPUT_COMPARISON = (
-        os.getenv("OUTPUT_COMPARISON")
-        or _cfg.get("outputs", {}).get("comparison")
-        or "outputs/comparison_page.json"
+    OUTPUT_COMPARISON = _get.__func__(
+        "OUTPUT_COMPARISON", "outputs/comparison_page.json", "outputs"
     )
 
     # ============================
     # LLM CONFIG
     # ============================
 
-    QUESTION_MODEL = (
-        os.getenv("QUESTION_MODEL")
-        or _cfg.get("llm", {}).get("model")
-        or "google/flan-t5-small"
+    QUESTION_MODEL = _get.__func__(
+        "QUESTION_MODEL", "google/flan-t5-small", "llm"
     )
 
-    GENERATION_MODEL = (
-        os.getenv("GENERATION_MODEL")
-        or _cfg.get("llm", {}).get("generation_model")
-        or QUESTION_MODEL
+    GENERATION_MODEL = _get.__func__(
+        "GENERATION_MODEL", QUESTION_MODEL, "llm"
     )
 
-    MAX_TOKENS = int(
-        os.getenv("MAX_TOKENS")
-        or _cfg.get("llm", {}).get("max_tokens")
-        or 256
-    )
+    MAX_TOKENS = int(_get.__func__(
+        "MAX_TOKENS", 256, "llm"
+    ))
 
-    TEMPERATURE = float(
-        os.getenv("TEMPERATURE")
-        or _cfg.get("llm", {}).get("temperature")
-        or 0.3
-    )
+    TEMPERATURE = float(_get.__func__(
+        "TEMPERATURE", 0.3, "llm"
+    ))
 
-    TOP_P = float(
-        os.getenv("TOP_P")
-        or _cfg.get("llm", {}).get("top_p")
-        or 0.9
-    )
+    TOP_P = float(_get.__func__(
+        "TOP_P", 0.9, "llm"
+    ))
 
-    MIN_QUESTIONS = int(
-        os.getenv("MIN_QUESTIONS")
-        or _cfg.get("llm", {}).get("min_questions")
-        or 15
-    )
+    MIN_QUESTIONS = int(_get.__func__(
+        "MIN_QUESTIONS", 15, "llm"
+    ))
 
     # ============================
     # LOGGING
     # ============================
 
-    LOG_LEVEL = (
-        os.getenv("LOG_LEVEL")
-        or _cfg.get("logging", {}).get("level")
-        or "INFO"
+    LOG_LEVEL = _get.__func__(
+        "LOG_LEVEL", "INFO", "logging"
     )
 
     # ============================
     # LANGCHAIN
     # ============================
 
-    LANGCHAIN_TRACING_V2 = (
-        os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
-    )
+    LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
 
-    LANGCHAIN_PROJECT = (
-        os.getenv("LANGCHAIN_PROJECT")
-        or "kasparro-ai-agent"
-    )
+    LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "kasparro-ai-agent")
 
-    LANGCHAIN_VERBOSE = (
-        os.getenv("LANGCHAIN_VERBOSE", "false").lower() == "true"
-    )
+    LANGCHAIN_VERBOSE = os.getenv("LANGCHAIN_VERBOSE", "false").lower() == "true"
